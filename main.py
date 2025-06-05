@@ -15,6 +15,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+from colorama import init as colorama_init, Fore, Style
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
@@ -29,22 +31,24 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+colorama_init()
+
 class LoggerStream:
     def __init__(self, stream, log_func):
         self.stream = stream
         self.log_func = log_func
+        self.ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')  # regex to remove ANSI
 
     def write(self, message):
         self.stream.write(message)
         self.stream.flush()
-        message_clean = message.strip()
-        if message_clean:
-            self.log_func(message_clean)
+        clean = self.ansi_escape.sub('', message).strip()
+        if clean:
+            self.log_func(clean)
 
     def flush(self):
         self.stream.flush()
 
-# Заменяем stdout и stderr
 sys.stdout = LoggerStream(sys.stdout, logging.info)
 sys.stderr = LoggerStream(sys.stderr, logging.error)
 
@@ -246,10 +250,12 @@ def main():
     print(f"[+] Сохраняем metadata.csv...")
     save_metadata_csv(metadata_list, base_folder)
 
-    confirm = input("Скачать видео, описания и обложки? (да/нет): ").strip().lower()
-    if confirm != "да":
-        print("Отмена.")
+    confirm = input(
+        Fore.YELLOW + "Скачать видео, описания и обложки? (да/нет) [Да по умолчанию]: " + Style.RESET_ALL).strip().lower()
+    if confirm not in ("", "да"):
+        print(Fore.CYAN + "Отмена." + Style.RESET_ALL)
         return
+
 
     def process_video(meta_with_index):
         index, total, meta = meta_with_index
