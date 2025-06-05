@@ -6,4 +6,4 @@ __pycache__/
 *.txt
 *.csv
 rutube_downloads/
-/tmp
+tmp/
