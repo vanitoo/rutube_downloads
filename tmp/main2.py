@@ -161,7 +161,7 @@ def main():
         print("Видео не найдены.")
         return
 
-    base_folder = os.path.join("rutube_downloads", channel_name)
+    base_folder = os.path.join("../rutube_downloads", channel_name)
     os.makedirs(base_folder, exist_ok=True)
 
     print(f"[+] Канал: {channel_name}")

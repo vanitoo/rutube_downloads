@@ -1,1 +1,9 @@
-./rutube_downloads
+.venv/
+__pycache__/
+*.log
+*.mp4
+*.jpg
+*.txt
+*.csv
+rutube_downloads/
+/tmp

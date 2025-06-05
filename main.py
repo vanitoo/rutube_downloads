@@ -1,55 +1,62 @@
+#version=0.3
+
 import os
 import re
 import csv
+import sys
+import time
 import requests
 import yt_dlp
+import logging
+import concurrent.futures
+from tqdm import tqdm
 from bs4 import BeautifulSoup
-
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
-import time
-
+from webdriver_manager.chrome import ChromeDriverManager
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
+# Логирование
+LOG_FILE = "rutube_download.log"
+logging.basicConfig(
+    filename=LOG_FILE,
+    filemode="a",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+class LoggerStream:
+    def __init__(self, stream, log_func):
+        self.stream = stream
+        self.log_func = log_func
+
+    def write(self, message):
+        self.stream.write(message)
+        self.stream.flush()
+        message_clean = message.strip()
+        if message_clean:
+            self.log_func(message_clean)
+
+    def flush(self):
+        self.stream.flush()
+
+# Заменяем stdout и stderr
+sys.stdout = LoggerStream(sys.stdout, logging.info)
+sys.stderr = LoggerStream(sys.stderr, logging.error)
+
+
+
 def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip()
-
-def get_video_links2(channel_url):
-    if not channel_url.endswith("/videos/"):
-        channel_url = channel_url.rstrip("/") + "/videos/"
-
-    resp = requests.get(channel_url, headers=HEADERS)
-    if resp.status_code != 200:
-        raise Exception("Ошибка загрузки страницы канала")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    # Название канала, обрезаем по "—"
-    try:
-        raw_title = soup.find("meta", property="og:title")["content"]
-        title = raw_title.split("—")[0].strip()
-    except:
-        title = "Unnamed_Channel"
-
-    links = set()
-    for a in soup.find_all("a", href=True):
-        match = re.match(r"^/video/([a-z0-9]{32})/$", a['href'])
-        if match:
-            full_url = "https://rutube.ru" + a['href']
-            links.add(full_url)
-
-    return sorted(links), sanitize_filename(title)
 
 def get_video_links(channel_url):
     if not channel_url.endswith("/videos/"):
         channel_url = channel_url.rstrip("/") + "/videos/"
 
-    # Настройка headless браузера
     options = webdriver.ChromeOptions()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -62,7 +69,6 @@ def get_video_links(channel_url):
     scroll_pause = 2
     max_attempts = 50
     last_height = driver.execute_script("return document.body.scrollHeight")
-
     for _ in range(max_attempts):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(scroll_pause)
@@ -78,7 +84,7 @@ def get_video_links(channel_url):
     except:
         title = "Unnamed_Channel"
 
-    # Поиск ссылок
+    # Сбор ссылок
     elements = driver.find_elements(By.CSS_SELECTOR, "a[href^='/video/'][href$='/']")
     links = set()
     for el in elements:
@@ -95,7 +101,7 @@ def fetch_metadata(video_url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(video_url, download=False)
     except Exception as e:
-        print(f"[!] Не удалось извлечь метаинформацию: {video_url}")
+        logging.error(f"Ошибка получения мета-данных: {video_url} — {e}")
         return None
 
 def save_description(title, description, folder, prefix):
@@ -113,26 +119,90 @@ def save_thumbnail(title, thumb_url, folder, prefix):
             with open(filename, "wb") as f:
                 f.write(response.content)
     except Exception as e:
-        print(f"[!] Не удалось сохранить обложку: {e}")
+        logging.error(f"Ошибка сохранения обложки: {title} — {e}")
 
-def download_video(video_url, folder, prefix):
+def download_video2(meta, folder, prefix):
+    title = meta.get("title", "Без названия")
+    url = meta.get("webpage_url")
+    filename_mp4 = os.path.join(folder, f"{prefix}{sanitize_filename(title)}.mp4")
+
+    if os.path.exists(filename_mp4):
+        print(f"[✓] Уже загружено: {filename_mp4}")
+        logging.info(f"Пропущено (уже есть): {title}")
+        return
+
     try:
         ydl_opts = {
-            "outtmpl": os.path.join(folder, f"{prefix}%(title)s.%(ext)s"),
+            "outtmpl": filename_mp4,
             "quiet": False,
             "no_warnings": True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
+            ydl.download([url])
+        logging.info(f"Скачано видео: {title}")
     except Exception as e:
-        print(f"[!] Ошибка при скачивании: {e}")
+        print(f"[!] Ошибка при скачивании: {title} — {e}")
+        logging.error(f"Ошибка скачивания: {title} — {e}")
+
+def download_video(meta, folder, prefix):
+    title = meta.get("title", "Без названия")
+    url = meta.get("webpage_url")
+    filename_base = f"{prefix}{sanitize_filename(title)}.mp4"
+    filename_mp4 = os.path.join(folder, filename_base)
+
+    # Поиск связанных временных файлов
+    related_garbage = []
+    for f in os.listdir(folder):
+        if f.startswith(filename_base) and (
+            f.endswith(".part") or f.endswith(".ytdl") or ".part-" in f
+        ):
+            related_garbage.append(f)
+
+    # Проверка существующего .mp4 и мусора
+    if os.path.exists(filename_mp4):
+        if related_garbage:
+            print(f"[!] Найдены фрагменты: {related_garbage} — удаляем и перекачиваем: {filename_mp4}")
+            logging.warning(f"Неполная загрузка: удаляем {filename_mp4} и {len(related_garbage)} врем. файлов")
+
+            try:
+                os.remove(filename_mp4)
+                for g in related_garbage:
+                    os.remove(os.path.join(folder, g))
+            except Exception as e:
+                logging.error(f"Ошибка при удалении временных файлов: {e}")
+                return
+        else:
+            print(f"[✓] Уже загружено: {filename_mp4}")
+            logging.info(f"Пропущено (чистый): {filename_mp4}")
+            return
+    elif related_garbage:
+        print(f"[!] Остатки от старой загрузки без основного файла — удаляем: {related_garbage}")
+        for g in related_garbage:
+            try:
+                os.remove(os.path.join(folder, g))
+            except Exception as e:
+                logging.error(f"Не удалось удалить мусорный файл: {g} — {e}")
+
+    # Загрузка
+    try:
+        ydl_opts = {
+            "outtmpl": os.path.join(folder, filename_base),
+            "quiet": False,
+            "no_warnings": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        logging.info(f"Скачано: {filename_mp4}")
+    except Exception as e:
+        print(f"[!] Ошибка при скачивании: {title} — {e}")
+        logging.error(f"Ошибка загрузки: {title} — {e}")
+
 
 def save_metadata_csv(metadata_list, folder):
     csv_path = os.path.join(folder, "metadata.csv")
     if not metadata_list:
         return
 
-    # Соберем все уникальные ключи
     keys = set()
     for entry in metadata_list:
         keys.update(entry.keys())
@@ -153,6 +223,7 @@ def main():
         links, channel_name = get_video_links(url)
     except Exception as e:
         print("Ошибка:", e)
+        logging.error(f"Ошибка загрузки страницы: {e}")
         return
 
     if not links:
@@ -167,7 +238,7 @@ def main():
 
     metadata_list = []
     for i, link in enumerate(links, 1):
-        print(f"[{i}/{len(links)}] Обработка: {link}")
+        print(f"[{i}/{len(links)}] Извлекаем мета-данные: {link}")
         meta = fetch_metadata(link)
         if meta:
             metadata_list.append(meta)
@@ -180,20 +251,36 @@ def main():
         print("Отмена.")
         return
 
-    for meta in metadata_list:
+    def process_video(meta_with_index):
+        index, total, meta = meta_with_index
+#    def process_video(meta):
         title = meta.get("title", "Без названия")
+        print(f"[{index}/{total}] Скачивается: {title}")
         desc = meta.get("description", "Описание отсутствует")
         thumb = meta.get("thumbnail")
-        url = meta.get("webpage_url")
         date_raw = meta.get("upload_date", "00000000")
         try:
             prefix = f"{date_raw[:4]}.{date_raw[4:6]}.{date_raw[6:8]}_"
         except:
             prefix = ""
 
+        filename_mp4 = os.path.join(base_folder, f"{prefix}{sanitize_filename(title)}.mp4")
+        if os.path.exists(filename_mp4):
+            print(f"[✓] Пропущено (уже есть): {title}")
+            return
+
         save_description(title, desc, base_folder, prefix)
         save_thumbnail(title, thumb, base_folder, prefix)
-        download_video(url, base_folder, prefix)
+        download_video(meta, base_folder, prefix)
+
+    THREADS = 1
+    print(f"[*] Запускаем загрузку в {THREADS} потока(ов)...")
+    indexed_meta = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as executor:
+        list(tqdm(executor.map(process_video, indexed_meta), total=len(metadata_list), desc="Загрузка"))
+
+#    with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as executor:
+#        list(tqdm(executor.map(process_video, metadata_list), total=len(metadata_list), desc="Загрузка"))
 
 if __name__ == "__main__":
     main()
