@@ -207,6 +207,15 @@ def create_gui(downloader):
         if not url:
             messagebox.showerror("Ошибка", "Введите ссылку")
             return
+
+        # Очистка таблицы
+        for iid in tree.get_children():
+            tree.delete(iid)
+        row_refs.clear()
+
+        # Очистка лога
+        gui["log_console"].delete('1.0', tk.END)
+
         download_btn.config(state="disabled")
         update_progress("Получаем список...", 0)
         try:

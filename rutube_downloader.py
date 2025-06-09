@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import json
@@ -101,10 +102,12 @@ class RutubeDownloader:
             save_description(title, desc, self.last_folder, prefix)
             save_thumbnail(title, thumb, self.last_folder, prefix)
             download_video(meta, self.last_folder, prefix)
+            logging.info(f"Видео загружено: {title}")
             if self._status_callback:
                 self._status_callback(index - 1, "✅ Готово")
         except Exception as e:
             print(f"[!] Ошибка: {title} — {e}")
+            logging.error(f"Ошибка при загрузке {title}: {e}")
             if self._status_callback:
                 self._status_callback(index - 1, "❌ Ошибка")
 
