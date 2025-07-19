@@ -7,3 +7,4 @@ __pycache__/
 *.csv
 rutube_downloads/
 tmp/
+rutube_config.json

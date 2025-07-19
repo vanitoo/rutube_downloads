@@ -9,7 +9,7 @@ from typing import Dict, List, Any, TextIO
 import requests
 import yt_dlp
 
-from custom_logger import logger
+from rutube_logger import logger
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 CONFIG_FILE = "rutube_config.json"

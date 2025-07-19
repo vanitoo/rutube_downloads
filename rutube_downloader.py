@@ -1,19 +1,19 @@
-import logging
-import os
-import time
-import json
-import re
-import requests
 import concurrent.futures
-from core_functions import (
+import os
+
+from rutube_functions import (
     get_video_links, fetch_metadata, fetch_and_cache_metadata,
     save_metadata_csv, save_description, save_thumbnail,
-    download_video, sanitize_filename
+    download_video, save_config, load_config
 )
+from rutube_logger import logger
+
 
 class RutubeDownloader:
     def __init__(self):
-        self.output_dir = "rutube_downloads"
+        config = load_config()
+        self.output_dir = config.get("download_folder", "rutube_downloads")
+        # self.output_dir = "rutube_downloads"
         self.last_folder = ""
         self._cancel_flag = False
         self._status_callback = None  # GUI callback
@@ -74,7 +74,7 @@ class RutubeDownloader:
         except Exception:
             prefix = ""
 
-        print(f"[{index}/{total}] Скачивается: {title}")
+        logger.info(f"[{index}/{total}] Скачивается: {title}")
         save_description(title, desc, self.last_folder, prefix)
         save_thumbnail(title, thumb, self.last_folder, prefix)
         download_video(meta, self.last_folder, prefix)
@@ -97,17 +97,17 @@ class RutubeDownloader:
                 self._status_callback(index - 1, "🛑 Отменено")
             return
 
-        print(f"[{index}/{total}] Скачивается: {title}")
+        logger.info(f"[{index}/{total}] Скачивается: {title}")
         try:
             save_description(title, desc, self.last_folder, prefix)
             save_thumbnail(title, thumb, self.last_folder, prefix)
             download_video(meta, self.last_folder, prefix)
-            logging.info(f"Видео загружено: {title}")
+
+            logger.info(f"Видео загружено: {title}")
             if self._status_callback:
                 self._status_callback(index - 1, "✅ Готово")
         except Exception as e:
-            print(f"[!] Ошибка: {title} — {e}")
-            logging.error(f"Ошибка при загрузке {title}: {e}")
+            logger.error(f"Ошибка при загрузке {title}: {e}")
             if self._status_callback:
                 self._status_callback(index - 1, "❌ Ошибка")
 
@@ -121,3 +121,6 @@ class RutubeDownloader:
         indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             executor.map(self.process_video, indexed)
+
+    def save_settings(self):
+        save_config("", self.output_dir)
