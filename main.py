@@ -14,3 +14,4 @@ if __name__ == "__main__":
     )
     downloader = RutubeDownloader()
     create_gui(downloader)
+
