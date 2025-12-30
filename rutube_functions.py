@@ -125,7 +125,7 @@ def save_thumbnail(title, thumb_url, folder, prefix):
         logger.error(f"Ошибка сохранения обложки: {title} — {e}")
 
 
-def download_video(meta, folder, prefix):
+def download_video(meta, folder, prefix, concurrent_fragment_count=4):
     title = meta.get("title", "Без названия")
     title = re.sub(r'\.(mp4|mkv|avi|mov)$', '', title, flags=re.IGNORECASE)
     url = meta.get("webpage_url")
@@ -168,7 +168,8 @@ def download_video(meta, folder, prefix):
             "outtmpl": os.path.join(folder, filename_base),
             "quiet": False,
             "no_warnings": True,
-            "logger": YTDLogger()
+            "logger": YTDLogger(),
+            "concurrent_fragment_count": concurrent_fragment_count
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -235,12 +236,22 @@ def load_config():
                 return json.load(f)
     except Exception as e:
         logger.error(f"Ошибка загрузки конфигурации: {e}")
-    return {"last_url": "", "download_folder": "rutube_downloads"}
+    return {
+        "last_url": "",
+        "download_folder": "rutube_downloads",
+        "concurrent_fragment_count": 4,
+        "max_workers": 1
+    }
 
 
-def save_config(last_url, download_folder):
+def save_config(last_url, download_folder, concurrent_fragment_count=4, max_workers=1):
     try:
-        config = {"last_url": last_url, "download_folder": download_folder}
+        config = {
+            "last_url": last_url,
+            "download_folder": download_folder,
+            "concurrent_fragment_count": concurrent_fragment_count,
+            "max_workers": max_workers
+        }
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
     except Exception as e:

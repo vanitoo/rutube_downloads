@@ -17,10 +17,18 @@ class RutubeDownloader:
         self.last_folder = ""
         self._cancel_flag = False
         self._status_callback = None  # GUI callback
+        self.concurrent_fragment_count = config.get("concurrent_fragment_count", 4)
+        self.max_workers = config.get("max_workers", 1)
 
     def set_status_callback(self, callback):
         """Устанавливает callback для обновления GUI-таблицы"""
         self._status_callback = callback
+
+    def update_settings(self, concurrent_fragment_count, max_workers):
+        """Обновляет настройки загрузки и сохраняет в config"""
+        self.concurrent_fragment_count = concurrent_fragment_count
+        self.max_workers = max_workers
+        save_config("", self.output_dir, concurrent_fragment_count, max_workers)
 
     def cancel_download(self):
         """Флаг отмены загрузки"""
@@ -101,7 +109,7 @@ class RutubeDownloader:
         try:
             save_description(title, desc, self.last_folder, prefix)
             save_thumbnail(title, thumb, self.last_folder, prefix)
-            download_video(meta, self.last_folder, prefix)
+            download_video(meta, self.last_folder, prefix, self.concurrent_fragment_count)
 
             logger.info(f"Видео загружено: {title}")
             if self._status_callback:
@@ -113,14 +121,22 @@ class RutubeDownloader:
 
     def download_all2(self, metadata_list):
         indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             executor.map(self.process_video, indexed)
 
     def download_all(self, metadata_list):
         self._cancel_flag = False  # сброс перед началом
         indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            executor.map(self.process_video, indexed)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = [executor.submit(self.process_video, item) for item in indexed]
+            for future in concurrent.futures.as_completed(futures):
+                if self._cancel_flag:
+                    executor.shutdown(wait=False)
+                    break
+                try:
+                    future.result()  # Вызвать исключение, если оно было
+                except Exception as e:
+                    logger.error(f"Ошибка в задаче: {e}")
 
     def save_settings(self):
         save_config("", self.output_dir)

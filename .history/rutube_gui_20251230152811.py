@@ -21,7 +21,7 @@ class RutubeGUI:
     def setup_ui(self):
         """Инициализация всех компонентов GUI"""
         self.window.title("Rutube Video Downloader")
-        self.window.geometry("1350x800")
+        self.window.geometry("1200x800")
 
         # Основные фреймы
         self.top_frame = tk.Frame(self.window)
