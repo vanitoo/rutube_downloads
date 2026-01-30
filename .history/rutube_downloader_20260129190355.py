@@ -119,6 +119,11 @@ class RutubeDownloader:
             if self._status_callback:
                 self._status_callback(index - 1, "❌ Ошибка")
 
+    def download_all2(self, metadata_list):
+        indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            executor.map(self.process_video, indexed)
+
     def download_all(self, metadata_list):
         self._cancel_flag = False  # сброс перед началом
         indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]

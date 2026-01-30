@@ -216,9 +216,6 @@ class RutubeGUI:
         if not url:
             messagebox.showerror("Ошибка", "Введите ссылку")
             return
-        if "rutube.ru" not in url:
-            messagebox.showerror("Ошибка", "Некорректная ссылка (ожидается rutube.ru)")
-            return
 
         threading.Thread(target=self._fetch_videos, args=(url,), daemon=True).start()
 

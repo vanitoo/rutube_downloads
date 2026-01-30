@@ -1,6 +1,5 @@
 import concurrent.futures
 import os
-from threading import Lock
 
 from rutube_functions import (
     get_video_links, fetch_metadata, fetch_and_cache_metadata,
@@ -14,9 +13,9 @@ class RutubeDownloader:
     def __init__(self):
         config = load_config()
         self.output_dir = config.get("download_folder", "rutube_downloads")
+        # self.output_dir = "rutube_downloads"
         self.last_folder = ""
         self._cancel_flag = False
-        self._cancel_lock = Lock()  # Потокобезопасность для cancel_flag
         self._status_callback = None  # GUI callback
         self.concurrent_fragment_count = config.get("concurrent_fragment_count", 4)
         self.max_workers = config.get("max_workers", 1)
@@ -44,6 +43,10 @@ class RutubeDownloader:
 
     def fetch_metadata(self, link):
         return fetch_metadata(link)
+
+    def fetch_all_metadata2(self, links):
+        cache_path = os.path.join(self.last_folder, "metadata.json")
+        return fetch_and_cache_metadata(links, cache_path)
 
     def fetch_all_metadata(self, links):
         cache_path = os.path.join(self.last_folder, "metadata.json")
@@ -80,12 +83,9 @@ class RutubeDownloader:
             prefix = ""
 
         logger.info(f"[{index}/{total}] Скачивается: {title}")
-        try:
-            save_description(title, desc, self.last_folder, prefix)
-            save_thumbnail(title, thumb, self.last_folder, prefix)
-            download_video(meta, self.last_folder, prefix)
-        except Exception as e:
-            logger.error(f"Ошибка при загрузке {title}: {e}")
+        save_description(title, desc, self.last_folder, prefix)
+        save_thumbnail(title, thumb, self.last_folder, prefix)
+        download_video(meta, self.last_folder, prefix)
 
     def process_video(self, meta_with_index):
         index, total, meta = meta_with_index
@@ -118,6 +118,11 @@ class RutubeDownloader:
             logger.error(f"Ошибка при загрузке {title}: {e}")
             if self._status_callback:
                 self._status_callback(index - 1, "❌ Ошибка")
+
+    def download_all2(self, metadata_list):
+        indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            executor.map(self.process_video, indexed)
 
     def download_all(self, metadata_list):
         self._cancel_flag = False  # сброс перед началом

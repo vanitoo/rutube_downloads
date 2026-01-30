@@ -21,7 +21,7 @@ class RutubeGUI:
     def setup_ui(self):
         """Инициализация всех компонентов GUI"""
         self.window.title("Rutube Video Downloader")
-        self.window.geometry("1200x800")
+        self.window.geometry("1350x800")
 
         # Основные фреймы
         self.top_frame = tk.Frame(self.window)
@@ -252,17 +252,34 @@ class RutubeGUI:
             logger.error(f"Ошибка обновления таблицы: {e}")
 
     def _check_existing_files(self, channel):
-        """Проверка существующих файлов и обновление статусов"""
+        """Проверка существующих файлов и обновление статусов (batch-оптимизация)"""
+        # Собираем все ожидаемые пути за один проход
+        expected_files = {}
         for item_id in self.tree.get_children():
             values = list(self.tree.item(item_id, "values"))
             index = int(values[0]) - 1
             if 0 <= index < len(self.current_metas):
                 meta = self.current_metas[index]
                 path = self._get_video_path(meta, channel)
-                # Обновляем только статус (5-я колонка), сохраняя остальные данные
-                new_values = values.copy()
-                new_values[5] = "✅ Готово" if os.path.exists(path) else "⏳"
-                self.tree.item(item_id, values=new_values)
+                expected_files[item_id] = path
+
+        if not expected_files:
+            return
+
+        # Сканируем папку один раз
+        folder = self.downloader.output_dir
+        channel_folder = os.path.join(folder, channel)
+        try:
+            existing = {entry.name for entry in os.scandir(channel_folder) if entry.is_file()}
+        except OSError:
+            existing = set()
+
+        # Обновляем статусы
+        for item_id, path in expected_files.items():
+            filename = os.path.basename(path)
+            values = list(self.tree.item(item_id, "values"))
+            values[5] = "✅ Готово" if filename in existing else "⏳"
+            self.tree.item(item_id, values=values)
 
     def _get_video_path(self, meta, channel):
         """Генерация пути к видеофайлу"""

@@ -45,6 +45,10 @@ class RutubeDownloader:
     def fetch_metadata(self, link):
         return fetch_metadata(link)
 
+    def fetch_all_metadata2(self, links):
+        cache_path = os.path.join(self.last_folder, "metadata.json")
+        return fetch_and_cache_metadata(links, cache_path)
+
     def fetch_all_metadata(self, links):
         cache_path = os.path.join(self.last_folder, "metadata.json")
         metadata_list = fetch_and_cache_metadata(links, cache_path)
@@ -118,6 +122,11 @@ class RutubeDownloader:
             logger.error(f"Ошибка при загрузке {title}: {e}")
             if self._status_callback:
                 self._status_callback(index - 1, "❌ Ошибка")
+
+    def download_all2(self, metadata_list):
+        indexed = [(i + 1, len(metadata_list), meta) for i, meta in enumerate(metadata_list)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            executor.map(self.process_video, indexed)
 
     def download_all(self, metadata_list):
         self._cancel_flag = False  # сброс перед началом

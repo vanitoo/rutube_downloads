@@ -167,29 +167,19 @@ def download_video(meta, folder, prefix, concurrent_fragment_count=4):
             except Exception as e:
                 logger.error(f"Не удалось удалить мусорный файл: {g} — {e}")
 
-    max_retries = 3
-    retry_delays = [2, 5, 10]  # экспоненциальная задержка в секундах
-
-    for attempt in range(max_retries):
-        try:
-            ydl_opts = {
-                "outtmpl": os.path.join(folder, filename_base),
-                "quiet": False,
-                "no_warnings": True,
-                "logger": YTDLogger(),
-                "concurrent_fragment_count": concurrent_fragment_count
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            logger.info(f"Скачано: {filename_mp4}")
-            return
-        except Exception as e:
-            if attempt < max_retries - 1:
-                delay = retry_delays[attempt]
-                logger.warning(f"Попытка {attempt + 1} неудачна. Повтор через {delay}с: {title}")
-                time.sleep(delay)
-            else:
-                logger.error(f"Ошибка загрузки после {max_retries} попыток: {title} — {e}")
+    try:
+        ydl_opts = {
+            "outtmpl": os.path.join(folder, filename_base),
+            "quiet": False,
+            "no_warnings": True,
+            "logger": YTDLogger(),
+            "concurrent_fragment_count": concurrent_fragment_count
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        logger.info(f"Скачано: {filename_mp4}")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки: {title} — {e}")
 
 
 # def save_metadata_csv(metadata_list, folder):
