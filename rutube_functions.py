@@ -96,14 +96,24 @@ def get_video_links(channel_url):
     return sorted(links), sanitize_filename(title)
 
 
-def fetch_metadata(video_url):
-    try:
-        ydl_opts = {'quiet': True, 'skip_download': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            return ydl.extract_info(video_url, download=False)
-    except Exception as e:
-        logger.error(f"Ошибка получения мета-данных: {video_url} — {e}")
-        return None
+def fetch_metadata(video_url, max_retries=3, retry_delays=None):
+    """Получение метаданных видео с retry-логикой"""
+    if retry_delays is None:
+        retry_delays = [2, 5, 10]
+
+    for attempt in range(max_retries):
+        try:
+            ydl_opts = {'quiet': True, 'skip_download': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(video_url, download=False)
+        except Exception as e:
+            if attempt < max_retries - 1:
+                delay = retry_delays[attempt]
+                logger.warning(f"Попытка {attempt + 1} неудачна. Повтор через {delay}с: {video_url}")
+                time.sleep(delay)
+            else:
+                logger.error(f"Ошибка получения мета-данных после {max_retries} попыток: {video_url} — {e}")
+    return None
 
 
 def save_description(title, description, folder, prefix):
@@ -229,13 +239,12 @@ def fetch_and_cache_metadata(video_urls, cache_path):
         if video_id in cached:
             new_metadata[video_id] = cached[video_id]
             continue
-        try:
-            with yt_dlp.YoutubeDL({'quiet': True, 'skip_download': True}) as ydl:
-                info = ydl.extract_info(url, download=False)
-                new_metadata[video_id] = info
-                updated = True
-        except Exception as e:
-            logger.error(f"[!] Не удалось извлечь мета-данные для {url}: {e}")
+        info = fetch_metadata(url)
+        if info:
+            new_metadata[video_id] = info
+            updated = True
+        else:
+            logger.error(f"[!] Не удалось извлечь мета-данные для {url}")
 
     if updated:
         save_metadata_json(new_metadata, cache_path)
