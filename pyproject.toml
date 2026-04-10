@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rutube-downloader-oop"
+version = "0.1.0"
+description = "Rutube downloader with Tkinter GUI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "yt-dlp",
+  "requests==2.32.5",
+  "selenium==4.38.0",
+  "webdriver-manager==4.0.2",
+  "colorama==0.4.6"
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]

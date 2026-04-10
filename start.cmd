@@ -5,12 +5,12 @@ if not exist .venv (
 )
 
 echo [*] Активация окружения...
-call .venv\\Scripts\\activate
+call .venv\Scripts\activate
 
 echo [*] Установка зависимостей...
 pip install -r requirements.txt
 
-echo [*] Запуск скрипта...
+echo [*] Запуск приложения...
 python main.py
 
 pause
