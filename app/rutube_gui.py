@@ -61,12 +61,13 @@ class RutubeGUI:
         self.progress_label = tk.Label(progress, text='Готов к работе', anchor='w')
         self.progress_label.pack(fill='x')
 
-        columns = ('#', 'Название', 'Дата', 'Время', 'Длительность', 'Статус', '✓')
+        columns = ('#', 'ID', 'Название', 'Дата', 'Время', 'Длительность', 'Статус', '✓')
         self.tree = ttk.Treeview(table_frame, columns=columns, show='headings')
         for col in columns:
             self.tree.heading(col, text=col, command=lambda c=col: self._sort_by_column(c))
         self.tree.column('#', width=40, anchor='center')
-        self.tree.column('Название', width=500, anchor='w')
+        self.tree.column('ID', width=120, anchor='w')
+        self.tree.column('Название', width=400, anchor='w')
         self.tree.column('Дата', width=100, anchor='center')
         self.tree.column('Время', width=80, anchor='center')
         self.tree.column('Длительность', width=100, anchor='center')
@@ -175,13 +176,16 @@ class RutubeGUI:
         threading.Thread(target=worker, daemon=True).start()
 
     def _populate_table(self, videos: list[VideoMetadata], folder: Path) -> None:
-        self.current_videos = videos
+        # Сортируем видео по дате (сначала новые)
+        sorted_videos = sorted(videos, key=lambda v: v.upload_date, reverse=True)
+        self.current_videos = sorted_videos
         self.current_folder = folder
-        self.video_by_id = {video.video_id: video for video in videos}
-        for index, video in enumerate(videos, start=1):
+        self.video_by_id = {video.video_id: video for video in sorted_videos}
+        for index, video in enumerate(sorted_videos, start=1):
             status = DownloadStatus.SKIPPED.value if self.storage.video_exists(folder, video) else DownloadStatus.PENDING.value
             self.tree.insert('', 'end', iid=video.video_id, values=(
                 index,
+                video.video_id,
                 video.title,
                 video.formatted_date,
                 '00:00',
@@ -279,7 +283,7 @@ class RutubeGUI:
     def _sort_by_column(self, column: str) -> None:
         items = list(self.tree.get_children())
         reverse = self.sort_reverse_by_column.get(column, False)
-        col_index = {'#': 0, 'Название': 1, 'Дата': 2, 'Время': 3, 'Длительность': 4, 'Статус': 5, '✓': 6}[column]
+        col_index = {'#': 0, 'ID': 1, 'Название': 2, 'Дата': 3, 'Время': 4, 'Длительность': 5, 'Статус': 6, '✓': 7}[column]
 
         def key_func(iid: str):
             value = self.tree.item(iid, 'values')[col_index]
@@ -303,7 +307,7 @@ class RutubeGUI:
     def open_settings_dialog(self) -> None:
         dialog = tk.Toplevel(self.window)
         dialog.title('Настройки загрузки')
-        dialog.geometry('320x150')
+        dialog.geometry('400x200')
         dialog.resizable(False, False)
         tk.Label(dialog, text='Потоков скачивания:').grid(row=0, column=0, padx=10, pady=10, sticky='w')
         concurrent_var = tk.IntVar(value=self.settings.concurrent_fragment_count)
@@ -313,6 +317,7 @@ class RutubeGUI:
         tk.Spinbox(dialog, from_=1, to=10, textvariable=workers_var).grid(row=1, column=1, padx=10, pady=10)
         tk.Button(dialog, text='Сохранить', command=lambda: self.save_settings(dialog, concurrent_var.get(), workers_var.get())).grid(row=2, column=0, padx=10, pady=10)
         tk.Button(dialog, text='Отмена', command=dialog.destroy).grid(row=2, column=1, padx=10, pady=10)
+        tk.Button(dialog, text='🔄 Переименовать файлы', command=lambda: self.rename_files_in_folder(dialog)).grid(row=3, column=0, columnspan=2, padx=10, pady=10)
 
     def save_settings(self, dialog: tk.Toplevel, concurrent: int, workers: int) -> None:
         self.settings = AppSettings(
@@ -323,6 +328,121 @@ class RutubeGUI:
         ).normalized()
         self.config_manager.save(self.settings)
         dialog.destroy()
+
+    def rename_files_in_folder(self, dialog: tk.Toplevel) -> None:
+        if self.current_folder is None:
+            messagebox.showwarning('Предупреждение', 'Сначала загрузите список видео')
+            return
+        
+        import re
+        import json
+        from app.rutube_logger import logger as app_logger
+        
+        # Паттерн для имени файла: ГГГГ.ММ.ДД_ЧЧММ_[videoId_]Название.расширение
+        file_pattern = re.compile(r'^(\d{4}\.\d{2}\.\d{2}_\d{4})_([a-z0-9]{32}_)?(.+)\.(mp4|txt|jpg|srt|pkl|json)$')
+        
+        # Загружаем metadata.json если есть
+        metadata_path = self.current_folder / 'metadata.json'
+        video_by_id: dict[str, VideoMetadata] = {}
+        if metadata_path.exists():
+            try:
+                raw_metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+                for video_id, data in raw_metadata.items():
+                    video_by_id[video_id] = VideoMetadata.from_raw(data)
+            except Exception as exc:
+                app_logger.logger.error('Ошибка чтения metadata.json: %s', exc)
+        
+        # Собираем все файлы по префиксу (дата_время)
+        files_by_prefix: dict[str, list[Path]] = {}
+        for file in self.current_folder.iterdir():
+            if file.is_file():
+                match = file_pattern.match(file.name)
+                if match:
+                    prefix = match.group(1)
+                    video_id_in_name = match.group(2)[:-1] if match.group(2) else None  # убираем нижнее подчеркивание
+                    title = match.group(3)
+                    ext = match.group(4)
+                    
+                    if prefix not in files_by_prefix:
+                        files_by_prefix[prefix] = []
+                    files_by_prefix[prefix].append({
+                        'path': file,
+                        'video_id': video_id_in_name,
+                        'title': title,
+                        'ext': ext,
+                        'match': match
+                    })
+        
+        renamed_count = 0
+        skipped_count = 0
+        error_count = 0
+        unknown_count = 0
+        
+        for prefix, files in files_by_prefix.items():
+            # Ищем video_id
+            video_id = None
+            file_title = None
+            
+            # Сначала проверяем, есть ли файл с video_id
+            for f in files:
+                if f['video_id']:
+                    video_id = f['video_id']
+                    file_title = f['title']
+                    break
+            
+            # Если нет, пытаемся найти по названию
+            if not video_id:
+                for f in files:
+                    file_title = f['title']
+                    # Ищем по точному совпадению названия
+                    for vid, video in video_by_id.items():
+                        if video.safe_title == file_title or video.title == file_title:
+                            video_id = vid
+                            break
+                    if video_id:
+                        break
+            
+            if not video_id:
+                app_logger.logger.warning('Не найден video_id для префикса %s, файлы пропущены', prefix)
+                unknown_count += len(files)
+                continue
+            
+            video = video_by_id.get(video_id)
+            if not video:
+                # Создаем минимальный объект если нет в metadata
+                video = VideoMetadata(video_id=video_id, title=file_title or 'Unknown', webpage_url='')
+            
+            # Переименовываем все файлы этого видео
+            for f in files:
+                old_path = f['path']
+                old_name = old_path.name
+                
+                # Проверяем, что video_id еще не добавлен
+                if f['video_id']:
+                    skipped_count += 1
+                    continue
+                
+                # Формируем новое имя
+                new_name = f"{prefix}_{video_id}_{f['title']}.{f['ext']}"
+                new_path = self.current_folder / new_name
+                
+                try:
+                    if new_path.exists():
+                        if new_path == old_path:
+                            skipped_count += 1
+                        else:
+                            app_logger.logger.warning('Файл уже существует: %s', new_name)
+                            skipped_count += 1
+                    else:
+                        old_path.rename(new_path)
+                        app_logger.logger.info('Переименовано: %s -> %s', old_name, new_name)
+                        renamed_count += 1
+                except Exception as exc:
+                    app_logger.logger.error('Ошибка переименования %s: %s', old_name, exc)
+                    error_count += 1
+        
+        dialog.destroy()
+        messagebox.showinfo('Результат', f'Переименовано: {renamed_count}\nПропущено: {skipped_count}\nНе найдено ID: {unknown_count}\nОшибок: {error_count}')
 
     def _set_busy(self, busy: bool) -> None:
         state = 'disabled' if busy else 'normal'

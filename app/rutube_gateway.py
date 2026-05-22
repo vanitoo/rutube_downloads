@@ -7,11 +7,20 @@ import time
 from pathlib import Path
 from typing import Callable
 
+from requests import options
 import yt_dlp
+#from yt_dlp import options
 
 from app.rutube_models import ChannelInfo, VideoMetadata, sanitize_filename
 
 VIDEO_URL_PATTERN = re.compile(r'^https://rutube\.ru/video/[a-z0-9]{32}/$')
+
+import os
+
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+os.environ["ALL_PROXY"] = ""
+os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 
 class RutubeGateway:
@@ -62,10 +71,16 @@ class RutubeGateway:
         from webdriver_manager.chrome import ChromeDriverManager
 
         options = webdriver.ChromeOptions()
+        options.add_argument("--no-proxy-server")
+        options.add_argument("--proxy-server='direct://'")
+        options.add_argument("--proxy-bypass-list=*")
         options.add_argument('--headless=new')
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1280,720')
         options.add_argument('--log-level=3')
+        options.add_argument('--no-proxy-server')
+#        options.add_argument('--proxy-bypass-list=<-loopback>')
+
         self._emit(progress_callback, 'Запускаю браузер...')
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         try:

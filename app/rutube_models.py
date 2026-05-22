@@ -67,15 +67,15 @@ class VideoMetadata:
 
     @property
     def mp4_filename(self) -> str:
-        return f'{self.file_prefix}{self.safe_title}.mp4'
+        return f'{self.file_prefix}{self.video_id}_{self.safe_title}.mp4'
 
     @property
     def txt_filename(self) -> str:
-        return f'{self.file_prefix}{self.safe_title}.txt'
+        return f'{self.file_prefix}{self.video_id}_{self.safe_title}.txt'
 
     @property
     def jpg_filename(self) -> str:
-        return f'{self.file_prefix}{self.safe_title}.jpg'
+        return f'{self.file_prefix}{self.video_id}_{self.safe_title}.jpg'
 
     @property
     def formatted_date(self) -> str:
