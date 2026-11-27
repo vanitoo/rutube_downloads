@@ -8,7 +8,8 @@ echo [*] Активация окружения...
 call .venv\Scripts\activate
 
 echo [*] Установка зависимостей...
-pip install -r requirements.txt
+python -m pip install .
+if errorlevel 1 exit /b 1
 
 echo [*] Запуск приложения...
 python main.py
