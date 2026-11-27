@@ -17,7 +17,7 @@
 
 - **Python 3.10+**
 - **Tkinter** — GUI фреймворк
-- **Selenium** — получение списка видео с канала (headless Chrome)
+- **Rutube API** — получение списка видео, yt-dlp как резерв
 - **yt-dlp** — получение метаданных и скачивание видео
 - **requests** — загрузка изображений (превью)
 
@@ -26,14 +26,14 @@
 ```
 .
 ├── main.py                    # Точка входа
-├── requirements.txt           # Зависимости
+├── pyproject.toml           # Зависимости
 ├── start.cmd                  # Скрипт запуска для Windows
 ├── rutube_config.json         # Файл настроек приложения
 └── app/
     ├── __init__.py
     ├── rutube_gui.py          # GUI и обработчики действий пользователя
     ├── rutube_downloader.py   # Оркестрация загрузки, RutubeDownloader
-    ├── rutube_gateway.py      # Работа с Rutube: Selenium + yt-dlp
+    ├── rutube_gateway.py      # Работа с Rutube: REST API + yt-dlp
     ├── rutube_storage.py      # Работа с файлами, сохранение данных
     ├── rutube_models.py       # Модели данных (VideoMetadata, AppSettings, DownloadStatus)
     ├── rutube_config.py       # Загрузка и сохранение настроек
@@ -47,7 +47,7 @@
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install .
 python main.py
 ```
 
@@ -79,8 +79,8 @@ python main.py
 
 ## Известные ограничения
 
-- Требуется установленный Chrome/Chromium для Selenium
-- headless режим может не работать на некоторых системах без виртуального дисплея
+- Публичный API Rutube может измениться; при ошибке используется yt-dlp
+- Chrome и ChromeDriver не требуются
 - yt-dlp требует актуальных обновлений для поддержки Rutube
 
 ## Дополнительная информация
